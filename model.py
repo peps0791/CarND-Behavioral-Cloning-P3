@@ -1,7 +1,4 @@
 import pandas as pd
-from stats import get_steering_angle_stats
-from stats import get_speed_stats
-from stats import get_throttle_stats
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping
 from keras.layers.convolutional import Conv2D, Cropping2D
@@ -14,7 +11,7 @@ import cv2
 
 DATA_DIRECTORY = 'data/'
 TRAINING_SPLIT = 0.8
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 LEARNING_RATE = 1.0e-4
 EPOCHS = 10
 MODEL_NAME = 'sample_data_new_model_filter'
@@ -60,7 +57,7 @@ def translate_image(image, steering_angle, range_x=100, range_y=10):
     return image, steering_angle
 
 def preprocess_image(image):
-    '''crop and resize the image'''
+    '''does the crop, resize and conversion to YUV space of the image'''
     image = crop_image(image)
     image = resize_image(image)
     image = convert_to_YUV(image)
@@ -68,6 +65,8 @@ def preprocess_image(image):
     return image
 
 def choose_image(row_data):
+    '''Selects an image from amongst the center camera image, left camra image 
+    and the rigt camera image '''
     toss = np.random.randint(3)
     img_path = ''
     steering = 0.0
@@ -86,6 +85,7 @@ def choose_image(row_data):
     return img_path, steering
 
 def load_image(img_path):
+    '''loads an image by reading from a file path'''
     img_path = img_path.strip()
     #print('image path-->', DATA_DIRECTORY + img_path)
     image = cv2.imread(DATA_DIRECTORY + img_path)
@@ -93,6 +93,7 @@ def load_image(img_path):
     return image
 
 def bright_augment_image(img):
+    '''Adds rando mbrightness to the image'''
     img1 = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
     random_bright = .25 + np.random.uniform()
     img1[:,:,2] = img1[:,:,2]*random_bright
@@ -127,13 +128,17 @@ def random_shadow(image):
     return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
 
 def augment_image(row_data):
+    '''auments the input image by translating, adding random shadow, augmenting
+    brightness and preprocessing (crop , resize and conversion to YUV space)
+    the image''' 
     img_path, steering = choose_image(row_data)
     image = load_image(img_path)
-    
     #translate image
     image, steering = translate_image(image, steering)
+    
     #augment brightness
     image = bright_augment_image(image)
+
     #flip image
     # This is done to reduce the bias for turning left that is present in the training data
     flip_prob = np.random.random()
@@ -141,12 +146,17 @@ def augment_image(row_data):
         # flip the image and reverse the steering angle
         steering = -1*steering
         image = cv2.flip(image, 1)
+
     #random shadow
     image = random_shadow(image)
+
+    #preprocess image
     image = preprocess_image(image)
+   
     return image, steering
 
 def get_data_generator(data_frame):
+    '''generator to generate data for the model on the fly.'''
     
     batch_size = BATCH_SIZE
     print('data generator called')
@@ -186,12 +196,13 @@ def main():
     print('Data loaded')
     #get_data_stats(org_data_frame)
 
-    train_data, valid_data = filter_dataset(org_data_frame)
+    train_data, valid_data, new_data_frame = filter_dataset(org_data_frame)
     print('Data filtered')
     
+    #get_data_stats(new_data_frame)
     org_data_frame = None
 
-    print('calling geerators')
+    print('calling generators')
     training_generator = get_data_generator(train_data) 
     validation_data_generator = get_data_generator(valid_data)
    
@@ -245,35 +256,21 @@ def get_model():
 
     model.add(Dense(1, name='output'))
     return model
-  
-
-def get_data_stats(data_frame):
-    '''get data stastics like speed distribution, steering angle distribution,
-    throttle distribution etc'''
-    print('Data statistics')
-
-    print('Distribution of data with respect to steering angles')
-    get_steering_angle_stats(data_frame)
-
-    print('Distribution of data with respect to car speeds')
-    get_speed_stats(data_frame)
-
-    print('Distribution of data with respect to car throttle')
-    get_throttle_stats(data_frame)
 
 #even out the steering angle values in data
 #filter out the 0 and lower speed values from data
 def filter_dataset(data_frame):
     data_frame = filter_steering(data_frame)
-    filter_throttle()
+    #filter_throttle()
     num_rows_training = int(data_frame.shape[0]*TRAINING_SPLIT)
 
     training_data = data_frame.loc[0:num_rows_training-1]
     validation_data = data_frame.loc[num_rows_training:]
-    return training_data, validation_data
+    return training_data, validation_data, data_frame
 
 def filter_steering(data_frame):
-    '''evens out the steering angle distribution in the data set.'''
+    '''evens out the steering angle distribution in the data set by removing 
+    70% of the rows with steering angle close to 0 (<0.01).'''
     print('Steering filtering')
     print ('number of rows with steering less than 0.01: ', len(data_frame.loc[data_frame['steering'] <0.007]))
     data_frame = data_frame.drop(data_frame[data_frame['steering'] <0.01].sample(frac=0.70).index)

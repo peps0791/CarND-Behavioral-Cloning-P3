@@ -45,7 +45,7 @@ class SimplePIController:
 
 
 controller = SimplePIController(0.1, 0.002)
-set_speed = 9
+set_speed = 10
 controller.set_desired(set_speed)
 
 
@@ -65,6 +65,7 @@ def telemetry(sid, data):
 
         image_array = preprocess_image(image_array)
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))
+        
         
         if np.absolute(steering_angle)>0.07:
             print('super inflating angles')
