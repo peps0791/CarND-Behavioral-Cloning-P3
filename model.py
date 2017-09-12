@@ -4,17 +4,19 @@ from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 from keras.layers import Flatten, Dense, Lambda, ELU, Dropout
+from keras.layers.advanced_activations import LeakyReLU, PReLU
 from keras.models import Sequential
 import numpy as np
 from keras.preprocessing.image import img_to_array, load_img
+from keras.layers.normalization import BatchNormalization 
 import cv2
 
 DATA_DIRECTORY = 'data/'
 TRAINING_SPLIT = 0.8
 BATCH_SIZE = 32
 LEARNING_RATE = 1.0e-4
-EPOCHS = 10
-MODEL_NAME = 'sample_data_new_model_filter'
+EPOCHS = 15
+MODEL_NAME = 'model_hsv_70_elu_data_proper_enhancement_extreme_bn.h5'
 MODEL_ROW_SIZE = 64
 MODEL_COL_SIZE = 64
 NO_OF_CHANNELS = 3
@@ -27,9 +29,18 @@ IMAGE_WIDTH = 320
 IMAGE_HEIGHT = 160
 
 
+#ACTIVATION = 'LeakyReLU'
+ACTIVATION = 'elu'
+
+
 def convert_to_YUV(image):
     '''converts the image from RGB space to YUV space'''
     image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+    return image
+
+def convert_to_HSV(image):
+    '''converts the image from RGB space to YUV space'''
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     return image
 
 def resize_image(image):
@@ -56,11 +67,22 @@ def translate_image(image, steering_angle, range_x=100, range_y=10):
     image = cv2.warpAffine(image, trans_m, (width, height))
     return image, steering_angle
 
+'''
+def shift_horizon(img):
+    h, w, _ = img.shape
+    horizon = 2 * h / 5
+    v_shift = np.random.randint(-h/8,h/8)
+    pts1 = np.float32([[0,horizon],[w,horizon],[0,h],[w,h]])
+    pts2 = np.float32([[0,horizon+v_shift],[w,horizon+v_shift],[0,h],[w,h]])
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+    return cv2.warpPerspective(img,M,(w,h), borderMode=cv2.BORDER_REPLICATE)'''
+
 def preprocess_image(image):
     '''does the crop, resize and conversion to YUV space of the image'''
     image = crop_image(image)
     image = resize_image(image)
-    image = convert_to_YUV(image)
+    #image = convert_to_YUV(image)
+    image = convert_to_HSV(image)
     image = np.array(image)
     return image
 
@@ -133,11 +155,14 @@ def augment_image(row_data):
     the image''' 
     img_path, steering = choose_image(row_data)
     image = load_image(img_path)
+
     #translate image
     image, steering = translate_image(image, steering)
     
     #augment brightness
     image = bright_augment_image(image)
+
+    #image = shift_horizon(image)
 
     #flip image
     # This is done to reduce the bias for turning left that is present in the training data
@@ -198,8 +223,10 @@ def main():
 
     train_data, valid_data, new_data_frame = filter_dataset(org_data_frame)
     print('Data filtered')
-    
     #get_data_stats(new_data_frame)
+
+    
+    
     org_data_frame = None
 
     print('calling generators')
@@ -224,34 +251,41 @@ def main():
 
 def get_model():
     model = Sequential()
-    model.add(Lambda(lambda x: x / 255., input_shape=MODEL_INPUT_SHAPE, name='normalizer'))
+    #model.add(Lambda(lambda x: x / 255., input_shape=MODEL_INPUT_SHAPE, name='normalizer'))
 
     '''model.add(Cropping2D(cropping=crop,
                              input_shape=(row, col, ch), name='cropping'))'''
 
-    model.add(Conv2D(3, 1, 1, subsample=(2, 2), activation='elu', name='cv0'))
-
-    model.add(Conv2D(16, 3, 3, activation='elu', name='cv1'))
+    model.add(Conv2D(3, 1, 1, subsample=(2, 2), input_shape=MODEL_INPUT_SHAPE,activation=ACTIVATION, name='cv0'))
+    model.add(BatchNormalization())
+    
+    model.add(Conv2D(16, 3, 3, activation=ACTIVATION, name='cv1'))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(name='maxPool_cv1'))
     model.add(Dropout(0.5, name='dropout_cv1'))
 
-    model.add(Conv2D(32, 3, 3, activation='elu', name='cv2'))
+    model.add(Conv2D(32, 3, 3, activation=ACTIVATION, name='cv2'))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(name='maxPool_cv2'))
     model.add(Dropout(0.5, name='dropout_cv2'))
 
-    model.add(Conv2D(64, 3, 3, activation='elu', name='cv3'))
+    model.add(Conv2D(64, 3, 3, activation=ACTIVATION, name='cv3'))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(name='maxPool_cv3'))
     model.add(Dropout(0.5, name='dropout_cv3'))
 
     model.add(Flatten())
 
-    model.add(Dense(1000, activation='elu', name='fc1'))
+    model.add(Dense(1000, activation=ACTIVATION, name='fc1'))
+    model.add(BatchNormalization())
     model.add(Dropout(0.5, name='dropout_fc1'))
 
-    model.add(Dense(100, activation='elu', name='fc2'))
+    model.add(Dense(100, activation=ACTIVATION, name='fc2'))
+    model.add(BatchNormalization())
     model.add(Dropout(0.5, name='dropout_fc2'))
 
-    model.add(Dense(10, activation='elu', name='fc3'))
+    model.add(Dense(10, activation=ACTIVATION, name='fc3'))
+    model.add(BatchNormalization())
     model.add(Dropout(0.5, name='dropout_fc3'))
 
     model.add(Dense(1, name='output'))
@@ -261,7 +295,11 @@ def get_model():
 #filter out the 0 and lower speed values from data
 def filter_dataset(data_frame):
     data_frame = filter_steering(data_frame)
-    #filter_throttle()
+
+    # replicate rows having extreme values of steering angles
+    #data_frame = replicate_steering(data_frame)
+    data_frame = replicate_proper_steering(data_frame)
+
     num_rows_training = int(data_frame.shape[0]*TRAINING_SPLIT)
 
     training_data = data_frame.loc[0:num_rows_training-1]
@@ -274,8 +312,66 @@ def filter_steering(data_frame):
     print('Steering filtering')
     print ('number of rows with steering less than 0.01: ', len(data_frame.loc[data_frame['steering'] <0.007]))
     data_frame = data_frame.drop(data_frame[data_frame['steering'] <0.01].sample(frac=0.70).index)
+
     print('new data frame length-->', len(data_frame))
     return data_frame
+
+def replicate_steering(data_frame):
+
+    print('Steering replicating')
+    new_data_frame = data_frame.loc[data_frame['steering'] > 0.20].append(data_frame.loc[data_frame['steering'] < - 0.20])
+    #print('new data frame-->', new_data_frame)
+    num_of_angles = len(data_frame.loc[data_frame['steering'] > 0.20].append(data_frame.loc[data_frame['steering'] < - 0.20]))
+
+    data_frame = data_frame.append([new_data_frame]*5,ignore_index=True)
+    #print()
+
+    #df_new = data_frame.loc[np.repeat(data_frame.loc[data_frame['steering'] > 0.20].append(data_frame.loc[data_frame['steering'] < - 0.20]), [5]*num_of_angles)]
+
+    return data_frame
+
+
+def replicate_proper_steering(data_frame):
+
+    print('Steering proper replicating')
+    data_frame_0_10 = data_frame.loc[(data_frame['steering'] >= 0.008) & (data_frame['steering'] <  0.10)]
+    data_frame_10_20 = data_frame.loc[(data_frame['steering'] >= 0.10) & (data_frame['steering'] <  0.20)]
+    data_frame_20_30 = data_frame.loc[(data_frame['steering'] >= 0.20) & (data_frame['steering'] <  0.30)]
+    data_frame_30_40 = data_frame.loc[(data_frame['steering'] >= 0.30) & (data_frame['steering'] <  0.40)]
+    data_frame_40_50 = data_frame.loc[(data_frame['steering'] >= 0.40) & (data_frame['steering'] <  0.50)]
+    data_frame_50 = data_frame.loc[data_frame['steering'] >= 0.50]
+
+    data_frame = data_frame.append([data_frame_0_10]*3,ignore_index=True)
+    data_frame = data_frame.append([data_frame_10_20]*2,ignore_index=True)
+    data_frame = data_frame.append([data_frame_20_30]*8,ignore_index=True)
+    data_frame = data_frame.append([data_frame_30_40]*6,ignore_index=True)
+    data_frame = data_frame.append([data_frame_40_50]*8,ignore_index=True)
+    data_frame = data_frame.append([data_frame_50]*60,ignore_index=True)
+
+    data_frame_neg_1_10 = data_frame.loc[(data_frame['steering'] <= -0.008) & (data_frame['steering'] >  -0.10)]
+    data_frame_neg_10_20 = data_frame.loc[(data_frame['steering'] <= -0.10) & (data_frame['steering'] >  -0.20)]
+    data_frame_neg_20_30 = data_frame.loc[(data_frame['steering'] <= -0.20) & (data_frame['steering'] >  -0.30)]
+    data_frame_neg_30_40 = data_frame.loc[(data_frame['steering'] <= -0.30) & (data_frame['steering'] >  -0.40)]
+    data_frame_neg_40_50 = data_frame.loc[(data_frame['steering'] <= -0.40) & (data_frame['steering'] >  -0.50)]
+    data_frame_neg_50 = data_frame.loc[data_frame['steering'] <= -0.50]
+
+
+    data_frame = data_frame.append([data_frame_neg_1_10]*8,ignore_index=True)
+    data_frame = data_frame.append([data_frame_neg_10_20]*8,ignore_index=True)
+    data_frame = data_frame.append([data_frame_neg_20_30]*20,ignore_index=True)
+    data_frame = data_frame.append([data_frame_neg_30_40]*20,ignore_index=True)
+    data_frame = data_frame.append([data_frame_neg_40_50]*20,ignore_index=True)
+    data_frame = data_frame.append([data_frame_neg_50]*80,ignore_index=True)
+
+    #print('new data frame-->', new_data_frame)
+    #num_of_angles = len(data_frame.loc[data_frame['steering'] > 0.20].append(data_frame.loc[data_frame['steering'] < - 0.20]))
+    #print()
+
+    #df_new = data_frame.loc[np.repeat(data_frame.loc[data_frame['steering'] > 0.20].append(data_frame.loc[data_frame['steering'] < - 0.20]), [5]*num_of_angles)]
+
+    return data_frame
+
+
 
 def filter_throttle():
     '''filters out the throttle values less than 0.25'''

@@ -67,6 +67,10 @@ def telemetry(sid, data):
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))
         
         
+        '''if np.absolute(steering_angle)>0.07:
+            print('super inflating angles')
+            steering_angle*=2.5
+            throttle = 0.01'''
         if np.absolute(steering_angle)>0.07:
             print('super inflating angles')
             steering_angle*=2.5
@@ -75,6 +79,7 @@ def telemetry(sid, data):
             print('inflating angles')
             steering_angle*=1.5
             throttle = 0.1
+        
         
         
         throttle = controller.update(float(speed))

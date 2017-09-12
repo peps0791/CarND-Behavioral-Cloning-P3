@@ -83,11 +83,11 @@ def get_data_stats(data_frame):
     print('Distribution of data with respect to steering angles')
     get_steering_angle_stats(data_frame)
 
-    print('Distribution of data with respect to car speeds')
-    get_speed_stats(data_frame)
+    #print('Distribution of data with respect to car speeds')
+    #get_speed_stats(data_frame)
 
-    print('Distribution of data with respect to car throttle')
-    get_throttle_stats(data_frame)
+    #print('Distribution of data with respect to car throttle')
+    #get_throttle_stats(data_frame)
 
 
 data_frame = load_data()
