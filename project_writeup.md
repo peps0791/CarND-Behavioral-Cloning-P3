@@ -192,7 +192,7 @@ And now its time to train.
 **Training**
 
 Having divided the dataset into train and test sets, generator is used to generate data on the fly for each epoch of training.
-The generator creates a batch os 32, where for each batch:
+The generator creates a batch of 32, where for each batch:
 1. An image is chosen from amongst the left, center and right camera images.
 2. The steering correction is set to be 0.25.
 3. The image is then augmented by using aforementioned techniques.
@@ -273,10 +273,10 @@ There's still a bit of "going-straight" tendency in the model, which isnt lettin
 
 **Thoughts**
 
-Having seen in the Traffic Sign Classification projet and confirmed with this one, data is everything. This solution works, but it could be improved in a number of ways:
+Having seen in the Traffic Sign Classification project and confirmed with this one, data is everything. This solution works, but it could be improved in a number of ways:
 1. **Different model architecture** 
 
-Altought the dataset is not that large or complex, still it could be insightful how some of the other arhitectures<insert link> would perform for this project.
+Altought the dataset is not that large or complex, still it could be insightful how some of the other architectures would perform for this project.
 
 2. **Data collection**
 
@@ -285,3 +285,7 @@ We could also try being less lazy and actually try collecting data **ourselves**
 3.  **Driving like a human**
 
 Right now, the car is able to drive around both tracks, but let's face it, if it were a real world driving, it would end up getting ticktets even before reaching the first turn. We could try teaching the model lane driving, which would mean some added data augmentation techiniques and better data to work with.
+
+4. **Break and Throttle**
+
+Currently, our convolutional neural network only predicts the values of steering angles using images. It could be enhanced to predict the throttle and break values as well. 
