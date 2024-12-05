@@ -13,7 +13,7 @@ The goals / steps of this project are the following:
 ### Project Approach and Results
 ---
 
-http://thebotspeaks.com/Udacity-Self-Driving-Car-Nanodegree-Program-Behavioral-Cloning-Project/
+https://bitsandmusic.com/post/behavioral-cloning/
 
 
 ### Project Set Up
